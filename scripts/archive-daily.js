@@ -283,11 +283,120 @@ async function main() {
             return rows;
         };
 
-        // Process destination monthly charts (year_chart_data is EXCLUDED)
+        // 1. Process target day's results into current monthly charts FIRST
         const updatedChart1Data = updateOrInsertRow(data.chart1_data, dateDDMM, chart1Headers, 'c1');
         const updatedChart2Data = updateOrInsertRow(data.chart2_data, dateDDMM, chart2Headers, 'c2');
         const updatedChart3Data = updateOrInsertRow(data.chart3_data, dateDDMM, chart3Headers, 'c3');
         const updatedFullChartData = updateOrInsertRow(data.fullchart_data, dateDDMM, fullChartHeaders, 'fc');
+
+        // ============================================================
+        // 5. MONTH-END ROLLOVER CHECK & PROCESS
+        // ============================================================
+        const [targetYearStr, targetMonthStr, targetDayStr] = fullISO.split('-');
+        const targetYearMonthKey = `${targetYearStr}-${targetMonthStr}`;
+
+        const kolkataFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' });
+        const currentKolkataDateStr = kolkataFormatter.format(new Date());
+        const [curKolkataYearStr, curKolkataMonthStr, curKolkataDayStr] = currentKolkataDateStr.split('-');
+        const currentYearMonthKey = `${curKolkataYearStr}-${curKolkataMonthStr}`;
+
+        const monthRolloverStatus = data.month_rollover_status || {};
+        const isMonthAlreadyRolledOver = monthRolloverStatus[targetYearMonthKey] && monthRolloverStatus[targetYearMonthKey].status === 'completed';
+
+        // Check if current Kolkata month is later than the target archive month
+        const isNewMonthBoundary = currentYearMonthKey > targetYearMonthKey;
+
+        let finalChart1Data = updatedChart1Data;
+        let finalChart2Data = updatedChart2Data;
+        let finalChart3Data = updatedChart3Data;
+        let finalFullChartData = updatedFullChartData;
+
+        let finalPrevFullChartHeaders = data.prev_fullchart_headers || fullChartHeaders;
+        let finalPrevFullChartData = data.prev_fullchart_data || [];
+        let finalYearChartData = Array.isArray(data.year_chart_data) ? [...data.year_chart_data] : [];
+
+        if (isNewMonthBoundary && !isMonthAlreadyRolledOver) {
+            console.log(`\n======================================================`);
+            console.log(`[MONTH ROLLOVER] Performing Month-End Rollover for Completed Month ${targetYearMonthKey}`);
+            console.log(`======================================================\n`);
+
+            // A. Move/Copy completed month's fullchart_data to Previous Month Chart
+            finalPrevFullChartHeaders = fullChartHeaders;
+            finalPrevFullChartData = updatedFullChartData.map(row => {
+                const cleanDate = row.date ? row.date.replace(/-/g, '') : '';
+                return {
+                    id: `pfc_r${cleanDate}`,
+                    date: row.date,
+                    values: Array.isArray(row.values) ? [...row.values] : []
+                };
+            });
+            console.log(`[MONTH ROLLOVER] Copied ${finalPrevFullChartData.length} rows to Previous Month Chart (prev_fullchart_data).`);
+
+            // B. Copy completed month's fullchart_data to Year Chart (year_chart_data)
+            updatedFullChartData.forEach(row => {
+                if (!row || !row.date) return;
+                let dayNum = row.date;
+                let monthNum = targetMonthStr;
+                if (row.date.includes('-')) {
+                    const p = row.date.split('-');
+                    dayNum = p[0];
+                    if (p.length >= 2) monthNum = p[1];
+                }
+                const fullDateKey = `${dayNum.padStart(2, '0')}-${monthNum.padStart(2, '0')}-${targetYearStr}`;
+                const ycRowId = `yc_${targetYearStr}_${monthNum.padStart(2, '0')}_${dayNum.padStart(2, '0')}`;
+
+                const existingYcIdx = finalYearChartData.findIndex(r => r && r.date === fullDateKey);
+                const rowValues = Array.isArray(row.values) ? [...row.values] : [];
+
+                if (existingYcIdx !== -1) {
+                    const existingRow = finalYearChartData[existingYcIdx];
+                    const existingVals = Array.isArray(existingRow.values) ? existingRow.values : [];
+                    const mergedVals = rowValues.map((v, idx) => {
+                        const oldV = existingVals[idx];
+                        if (v === '-' || v === '' || v === null || v === undefined) {
+                            if (oldV && oldV !== '-' && oldV !== '' && oldV !== 'WAIT') {
+                                return oldV;
+                            }
+                        }
+                        return v;
+                    });
+
+                    finalYearChartData[existingYcIdx] = {
+                        ...existingRow,
+                        values: mergedVals
+                    };
+                } else {
+                    finalYearChartData.push({
+                        id: ycRowId,
+                        date: fullDateKey,
+                        values: rowValues
+                    });
+                }
+            });
+
+            // Sort year_chart_data chronologically by date (YYYY-MM-DD)
+            finalYearChartData.sort((a, b) => {
+                if (!a || !a.date) return -1;
+                if (!b || !b.date) return 1;
+                const parseDate = (dStr) => {
+                    const p = dStr.split('-');
+                    if (p.length === 3) {
+                        return `${p[2]}-${p[1]}-${p[0]}`;
+                    }
+                    return dStr;
+                };
+                return parseDate(a.date).localeCompare(parseDate(b.date));
+            });
+
+            console.log(`[MONTH ROLLOVER] Merged completed month data into Year Chart (year_chart_data). Total rows now: ${finalYearChartData.length}.`);
+
+            // C. Reset current monthly charts for the new month (start empty)
+            finalChart1Data = [];
+            finalChart2Data = [];
+            finalChart3Data = [];
+            finalFullChartData = [];
+            console.log(`[MONTH ROLLOVER] Current monthly charts reset for fresh month.`);
+        }
 
         // Game state rollover: Move today -> yesterday and clear today for next day ONLY on confirmed archive
         const updatedPrimaryGames = primaryGames.map(g => {
@@ -314,12 +423,25 @@ async function main() {
         const updates = {};
         updates['games_primary'] = updatedPrimaryGames;
         if (secondaryGames.length > 0) updates['games_secondary'] = updatedSecondaryGames;
-        updates['chart1_data'] = updatedChart1Data;
-        updates['chart2_data'] = updatedChart2Data;
-        updates['chart3_data'] = updatedChart3Data;
-        updates['fullchart_data'] = updatedFullChartData;
+        updates['chart1_data'] = finalChart1Data;
+        updates['chart2_data'] = finalChart2Data;
+        updates['chart3_data'] = finalChart3Data;
+        updates['fullchart_data'] = finalFullChartData;
 
-        // Set archive status marker
+        if (isNewMonthBoundary && !isMonthAlreadyRolledOver) {
+            updates['prev_fullchart_headers'] = finalPrevFullChartHeaders;
+            updates['prev_fullchart_data'] = finalPrevFullChartData;
+            updates['year_chart_data'] = finalYearChartData;
+            updates[`month_rollover_status/${targetYearMonthKey}`] = {
+                status: 'completed',
+                month: targetMonthStr,
+                year: targetYearStr,
+                completedAt: new Date().toISOString(),
+                rowsCount: updatedFullChartData.length
+            };
+        }
+
+        // Set daily archive status marker
         updates[`archive_status/${fullISO}`] = {
             status: 'completed',
             completedAt: new Date().toISOString(),
@@ -331,7 +453,9 @@ async function main() {
         await rootRef.update(updates);
 
         console.log(`\n✔ [SUCCESS] Successfully archived results for date ${dateDDMMYYYY} (${fullISO}) into Realtime Database.`);
-        console.log(`✔ [SUCCESS] Destination paths updated: chart1_data, chart2_data, chart3_data, fullchart_data, games_primary, archive_status.`);
+        if (isNewMonthBoundary && !isMonthAlreadyRolledOver) {
+            console.log(`✔ [SUCCESS] Month Rollover completed for ${targetYearMonthKey}: Copied to Previous Month & Year Chart, reset current monthly charts.`);
+        }
         process.exit(0);
     } catch (err) {
         console.error(`\n❌ [ERROR] Archiving failed:`, err);

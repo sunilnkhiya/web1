@@ -2,8 +2,8 @@ name: Daily Result Archiving Workflow
 
 on:
   schedule:
-    # Runs at 20:40 UTC every day, which corresponds to 02:10 AM IST (Asia/Kolkata) the next day
-    - cron: '40 20 * * *'
+    # Runs at 21:45 UTC every day, which corresponds to 03:15 AM IST (Asia/Kolkata) the next day
+    - cron: '45 21 * * *'
   workflow_dispatch:
     inputs:
       custom_date:

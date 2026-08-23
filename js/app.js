@@ -339,12 +339,45 @@ function renderFullChart(tableId, headerKey, dataKey) {
     table.innerHTML = html;
 }
 
+function updateMonthChartHeadings() {
+    const monthNames = {
+        0: 'JANUARY', 1: 'FEBRUARY', 2: 'MARCH', 3: 'APRIL',
+        4: 'MAY', 5: 'JUNE', 6: 'JULY', 7: 'AUGUST',
+        8: 'SEPTEMBER', 9: 'OCTOBER', 10: 'NOVEMBER', 11: 'DECEMBER'
+    };
+
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+    const dateStr = formatter.format(now);
+    const [y, m] = dateStr.split('-').map(Number);
+    const curYear = y;
+    const curMonthIdx = m - 1;
+
+    const curMonthName = monthNames[curMonthIdx] || 'CURRENT MONTH';
+
+    const prevDate = new Date(Date.UTC(curYear, curMonthIdx - 1, 15));
+    const prevYear = prevDate.getUTCFullYear();
+    const prevMonthIdx = prevDate.getUTCMonth();
+    const prevMonthName = monthNames[prevMonthIdx] || 'PREVIOUS MONTH';
+
+    const currentHeadings = document.querySelectorAll('#current-month-chart-heading');
+    currentHeadings.forEach(el => {
+        el.textContent = `${curMonthName} RESULT CHART ${curYear}`;
+    });
+
+    const prevHeadings = document.querySelectorAll('#prev-month-chart-heading');
+    prevHeadings.forEach(el => {
+        el.textContent = `${prevMonthName} RESULT CHART ${prevYear}`;
+    });
+}
+
 // ============================================================
 // Initialize Pages
 // ============================================================
 
 function initHomePage() {
     updateClock();
+    updateMonthChartHeadings();
     renderMarquee();
     renderHindiText();
     renderFeatured();
@@ -486,6 +519,7 @@ function renderYearChart() {
 
 function initChartPage() {
     updateClock();
+    updateMonthChartHeadings();
     renderMarquee();
     renderLiveResults();
     renderFullChart('fullchart-table', 'fullchart_headers', 'fullchart_data');
