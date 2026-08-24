@@ -1710,36 +1710,61 @@ function previewYearChartCSV() {
     showToast('CSV preview generated successfully!');
 }
 
+function isValidResultValue(val) {
+    if (val === undefined || val === null) return false;
+    var str = String(val).trim();
+    if (str === '' || str === '-' || str === '--' || str.toUpperCase() === 'WAIT') {
+        return false;
+    }
+    return true;
+}
+
 function importYearChartData(mode) {
+    if (mode === 'replace') {
+        showToast('Replace mode is permanently disabled to protect historical data.', 'error');
+        console.error('importYearChartData("replace") rejected: Replace mode is permanently disabled.');
+        return Promise.reject(new Error('Replace mode is permanently disabled.'));
+    }
+
     if (!yearChartCSVPreviewData || !yearChartCSVPreviewData.rows || yearChartCSVPreviewData.rows.length === 0) {
         showToast('Please preview the CSV data before importing.', 'error');
         return;
     }
 
-    var actionText = mode === 'replace' ? 'REPLACE the entire Year Chart' : 'MERGE with the existing Year Chart';
-    if (!confirm('Are you sure you want to ' + actionText + ' with ' + yearChartCSVPreviewData.rows.length + ' imported records?')) return;
+    mode = 'merge';
 
-    var finalHeaders = yearChartCSVPreviewData.headers;
-    var finalData = [];
+    if (!confirm('Are you sure you want to MERGE ' + yearChartCSVPreviewData.rows.length + ' imported records with the existing Year Chart?')) return;
 
-    if (mode === 'replace') {
-        finalData = yearChartCSVPreviewData.rows;
-    } else {
-        var existingHeaders = getData('year_chart_headers') || [];
-        var existingData = getData('year_chart_data') || [];
+    var existingHeaders = getData('year_chart_headers') || [];
+    var existingData = getData('year_chart_data') || [];
 
-        finalHeaders = (existingHeaders.length > 0 && existingHeaders.length === yearChartCSVPreviewData.headers.length) ? existingHeaders : yearChartCSVPreviewData.headers;
-        finalData = existingData.slice();
+    var finalHeaders = (existingHeaders.length > 0 && existingHeaders.length === yearChartCSVPreviewData.headers.length) ? existingHeaders : yearChartCSVPreviewData.headers;
+    var finalData = JSON.parse(JSON.stringify(existingData));
 
-        yearChartCSVPreviewData.rows.forEach(function(importedRow) {
-            var existingRow = finalData.find(function(r) { return r.date === importedRow.date; });
-            if (existingRow) {
-                existingRow.values = importedRow.values;
-            } else {
-                finalData.push(importedRow);
+    yearChartCSVPreviewData.rows.forEach(function(importedRow) {
+        if (!importedRow || !importedRow.date) return;
+
+        var existingRow = finalData.find(function(r) { return r && r.date === importedRow.date; });
+        if (existingRow) {
+            var mergedValues = Array.isArray(existingRow.values) ? existingRow.values.slice() : [];
+            var importedValues = Array.isArray(importedRow.values) ? importedRow.values : [];
+            var maxLen = Math.max(mergedValues.length, importedValues.length);
+
+            for (var i = 0; i < maxLen; i++) {
+                var existingVal = mergedValues[i];
+                var importedVal = importedValues[i];
+
+                if (isValidResultValue(importedVal)) {
+                    mergedValues[i] = String(importedVal).trim();
+                } else {
+                    // Do NOT overwrite existing valid value with blank / - / -- / WAIT / null / undefined
+                }
             }
-        });
-    }
+            existingRow.values = mergedValues;
+        } else {
+            finalData.push(importedRow);
+        }
+    });
 
     return Promise.all([
         pushToFirebase('year_chart_headers', finalHeaders),
@@ -1754,7 +1779,7 @@ function importYearChartData(mode) {
         document.getElementById('yearchart-csv-text').value = '';
         yearChartCSVPreviewData = null;
 
-        showToast('Successfully imported ' + finalData.length + ' records (' + mode.toUpperCase() + ' mode)!');
+        showToast('Successfully merged ' + finalData.length + ' records!');
     }).catch(function(err) {
         showToast('Import failed: ' + err.message, 'error');
     });
