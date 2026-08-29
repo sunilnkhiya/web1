@@ -4,6 +4,7 @@ on:
   schedule:
     # Runs at 21:45 UTC every day, which corresponds to 03:15 AM IST (Asia/Kolkata) the next day
     - cron: '45 21 * * *'
+    - cron: '15 22 * * *'
   workflow_dispatch:
     inputs:
       custom_date:
