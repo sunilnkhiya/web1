@@ -191,6 +191,18 @@ function listenToFirebaseUpdates() {
             }
         });
 
+        const monthlyChartKeys = ['chart1_data', 'chart2_data', 'chart3_data', 'fullchart_data'];
+        monthlyChartKeys.forEach(function(key) {
+            if (!(key in val) || val[key] === undefined || val[key] === null) {
+                const emptyValStr = JSON.stringify([]);
+                const localValStr = localStorage.getItem('a7_' + key);
+                if (localValStr !== emptyValStr) {
+                    localStorage.setItem('a7_' + key, emptyValStr);
+                    hasChanges = true;
+                }
+            }
+        });
+
         if (hasChanges) {
             if (typeof renderPrimaryTable === 'function' && document.getElementById('primary-table-body')) {
                 renderPrimaryTable();
