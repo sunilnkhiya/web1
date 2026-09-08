@@ -1330,6 +1330,7 @@ function initAdminPage() {
         renderAdminChart('admin-chart3', 'chart3_headers', 'chart3_data', 2);
         renderAdminChart('admin-fullchart', 'fullchart_headers', 'fullchart_data', 3);
         renderAdminChart('admin-prev-fullchart', 'prev_fullchart_headers', 'prev_fullchart_data', 4);
+        updateAdminMonthHeadings();
         renderAdminYearChart();
         renderAdminTopGameNames();
         renderAdminMarquee();
@@ -1342,6 +1343,48 @@ function initAdminPage() {
         switchTab('results');
         console.log('[ADMIN INIT] Admin panel loaded successfully.');
     });
+}
+
+function updateAdminMonthHeadings() {
+    var monthNames = [
+        'January', 'February', 'March', 'April',
+        'May', 'June', 'July', 'August',
+        'September', 'October', 'November', 'December'
+    ];
+    
+    var kolkataDateStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    var now = new Date(kolkataDateStr);
+    
+    var curYear = now.getFullYear();
+    var curMonthIdx = now.getMonth();
+    var curMonthName = monthNames[curMonthIdx];
+    
+    var prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    var prevYear = prevDate.getFullYear();
+    var prevMonthIdx = prevDate.getMonth();
+    var prevMonthName = monthNames[prevMonthIdx];
+
+    var fullChartContainer = document.getElementById('admin-fullchart');
+    if (fullChartContainer) {
+        var section = fullChartContainer.closest('.admin-section');
+        if (section) {
+            var h3 = section.querySelector('h3');
+            if (h3) {
+                h3.innerHTML = curMonthName + ' ' + curYear + ' Full Chart <span class="section-badge">Chart Page</span>';
+            }
+        }
+    }
+
+    var prevFullChartContainer = document.getElementById('admin-prev-fullchart');
+    if (prevFullChartContainer) {
+        var section = prevFullChartContainer.closest('.admin-section');
+        if (section) {
+            var h3 = section.querySelector('h3');
+            if (h3) {
+                h3.innerHTML = prevMonthName + ' ' + prevYear + ' Full Chart (Previous Month) <span class="section-badge">Chart Page</span>';
+            }
+        }
+    }
 }
 
 // ============================================================
